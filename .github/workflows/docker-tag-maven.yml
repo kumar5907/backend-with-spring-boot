@@ -1,20 +1,15 @@
-name: CI - Maven + Docker (multi-arch build & push)
+name: Build & Push Docker Image on Tag
 
 on:
   push:
-    branches:
-      - master
-      - 'release/**'
-      - '**'
-  pull_request:
-    types: [opened, synchronize, reopened]
+    tags:
+      - 'v*'   # runs only for tags like v1.0.0, v2.5.3 etc.
 
 env:
-  REPO_USER: ${{ secrets.DOCKERHUB_USERNAME }}
-  BASE_NAME: my-springboot-app
+  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/my-springboot-app
 
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
 
     steps:
@@ -38,7 +33,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-m2-
 
-      - name: Build (Maven) - tests + package
+      - name: Build with Maven (tests + package)
         run: mvn -B -T 1C clean package
 
       # QEMU + Buildx setup for cross-architecture builds
@@ -50,72 +45,26 @@ jobs:
         with:
           install: true
 
-      - name: Decide push & tags
-        id: vars
-        run: |
-          SHORT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          echo "PUSH=false" >> $GITHUB_ENV
-          echo "TAGS=" >> $GITHUB_ENV
-
-          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
-            if [[ "${GITHUB_REF}" == "refs/heads/master" ]]; then
-              echo "PUSH=true" >> $GITHUB_ENV
-              echo -e "${REPO_USER}/${BASE_NAME}:latest\n${REPO_USER}/${BASE_NAME}:master-${SHORT_SHA}" >> $GITHUB_ENV
-              exit 0
-            fi
-
-            if [[ "${GITHUB_REF}" == refs/heads/release/* ]]; then
-              BRANCH_NAME=${GITHUB_REF#refs/heads/}
-              SAFE_BRANCH=$(echo "$BRANCH_NAME" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
-              echo "PUSH=true" >> $GITHUB_ENV
-              echo "${REPO_USER}/${BASE_NAME}:release-${SAFE_BRANCH}-${SHORT_SHA}" >> $GITHUB_ENV
-              exit 0
-            fi
-
-            if [[ "${GITHUB_REF}" == refs/heads/* ]]; then
-              BRANCH_NAME=${GITHUB_REF#refs/heads/}
-              SAFE_BRANCH=$(echo "$BRANCH_NAME" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
-              echo "PUSH=true" >> $GITHUB_ENV
-              echo "${REPO_USER}/dev-${BASE_NAME}:${SAFE_BRANCH}-${SHORT_SHA}" >> $GITHUB_ENV
-              exit 0
-            fi
-          fi
-
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
-            PR_NUMBER=${{ github.event.pull_request.number }}
-            HEAD_REF="${GITHUB_HEAD_REF}"
-            SAFE_HEAD=$(echo "${HEAD_REF}" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
-            echo "PUSH=true" >> $GITHUB_ENV
-            echo "${REPO_USER}/dev-${BASE_NAME}:pr-${PR_NUMBER}-${SAFE_HEAD}-${SHORT_SHA}" >> $GITHUB_ENV
-            exit 0
-          fi
-
-      - name: Debug: show computed tags and push flag
-        run: |
-          echo "PUSH = $PUSH"
-          echo "TAGS = $TAGS"
-
-      - name: Log in to Docker Hub (only when pushing and secret present)
-        if: env.PUSH == 'true' && secrets.DOCKERHUB_TOKEN != ''
+      - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and (conditionally) push multi-arch image
+      - name: Extract version from tag
+        id: vars
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
+
+      - name: Build and push multi-arch Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
-          push: ${{ env.PUSH == 'true' && secrets.DOCKERHUB_TOKEN != '' }}
+          push: true
           platforms: linux/amd64,linux/arm64
-          # optionally enable remote cache for faster builds if you set up a registry cache
-          # cache-from: type=registry,ref=${{ env.REPO_USER }}/cache-${{ env.BASE_NAME }}:latest
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+          # Optional: enable build cache (requires a registry cache image)
+          # cache-from: type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
           # cache-to: type=inline
-          tags: ${{ env.TAGS }}
-
-      - name: Show pushed image (for logs)
-        if: env.PUSH == 'true' && secrets.DOCKERHUB_TOKEN != ''
-        run: |
-          echo "Pushed tags:"
-          echo "${TAGS}"
