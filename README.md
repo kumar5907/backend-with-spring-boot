@@ -5,7 +5,7 @@
 
 ## 📌 Objectives  
 - Learn and apply **Spring Boot fundamentals**  
-- Build **RESTful APIs** with Spring Web  
+- Build **RESTful APIs** with Spring Web-  
 - Explore **Spring Data JPA** for database access  
 - Secure applications using **Spring Security**  
 - Understand **Microservices architecture** with Spring Cloud  
