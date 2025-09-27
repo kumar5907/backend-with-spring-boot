@@ -3,7 +3,7 @@ name: CI - Maven + Docker (multi-arch build & push)
 on:
   push:
     branches:
-      - main
+      - master
       - 'release/**'
       - '**'
   pull_request:
@@ -58,9 +58,9 @@ jobs:
           echo "TAGS=" >> $GITHUB_ENV
 
           if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
-            if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            if [[ "${GITHUB_REF}" == "refs/heads/master" ]]; then
               echo "PUSH=true" >> $GITHUB_ENV
-              echo -e "${REPO_USER}/${BASE_NAME}:latest\n${REPO_USER}/${BASE_NAME}:main-${SHORT_SHA}" >> $GITHUB_ENV
+              echo -e "${REPO_USER}/${BASE_NAME}:latest\n${REPO_USER}/${BASE_NAME}:master-${SHORT_SHA}" >> $GITHUB_ENV
               exit 0
             fi
 
